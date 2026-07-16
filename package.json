@@ -1,0 +1,19 @@
+{
+  "name": "monad-escrow",
+  "version": "1.0.0",
+  "description": "Time-based escrow contract for Monad testnet/mainnet",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:testnet": "hardhat run scripts/deploy.js --network monadTestnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network monadMainnet"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  }
+}

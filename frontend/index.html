@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monad Escrow — Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#0F0F13;
+    --surface:#17171D;
+    --surface-raised:#1E1E26;
+    --paper:#ECE9E3;
+    --paper-dim:#A9A6A0;
+    --violet:#7C5CFF;
+    --violet-dim:#4E3FA8;
+    --amber:#E8A33D;
+    --green:#6FCF97;
+    --hairline:#2A2A33;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(124,92,255,0.08), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(124,92,255,0.05), transparent 40%);
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:48px 24px 96px;}
+  header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand-mark{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;letter-spacing:-0.02em;}
+  .brand-mark span{color:var(--violet);}
+  .brand-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--paper-dim);letter-spacing:0.04em;text-transform:uppercase;}
+  .connect-block{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+  button{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:14px;
+    border-radius:var(--radius);
+    border:1px solid var(--hairline);
+    background:var(--surface-raised);
+    color:var(--paper);
+    padding:10px 16px;
+    cursor:pointer;
+    transition:border-color .15s ease, transform .1s ease;
+  }
+  button:hover{border-color:var(--violet);}
+  button:active{transform:translateY(1px);}
+  button.primary{background:var(--violet);border-color:var(--violet);color:#0F0F13;}
+  button.primary:hover{background:#8F72FF;}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  select, input{
+    font-family:'IBM Plex Mono',monospace;
+    background:var(--surface);
+    border:1px solid var(--hairline);
+    color:var(--paper);
+    border-radius:var(--radius);
+    padding:10px 12px;
+    font-size:13px;
+    width:100%;
+  }
+  select:focus, input:focus{outline:none;border-color:var(--violet);}
+  label{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--paper-dim);display:block;margin-bottom:6px;}
+  .field{margin-bottom:14px;}
+  .net-pill{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--hairline);color:var(--paper-dim);}
+  .net-pill.ok{border-color:var(--green);color:var(--green);}
+  .net-pill.bad{border-color:var(--amber);color:var(--amber);}
+  .rule{border:none;border-top:1px solid var(--hairline);margin:32px 0;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--violet);margin-bottom:8px;}
+  h2{font-family:'Space Grotesk',sans-serif;font-size:20px;margin:0 0 16px;}
+  .panel{background:var(--surface);border:1px solid var(--hairline);border-radius:6px;padding:24px;margin-bottom:20px;}
+  .row{display:flex;gap:12px;}
+  .row > *{flex:1;}
+  .helptext{font-size:12px;color:var(--paper-dim);margin-top:6px;line-height:1.5;}
+  .status-msg{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px 12px;border-radius:var(--radius);margin-top:12px;display:none;}
+  .status-msg.show{display:block;}
+  .status-msg.info{background:rgba(124,92,255,0.1);border:1px solid var(--violet-dim);color:#C9BFFF;}
+  .status-msg.error{background:rgba(232,163,61,0.1);border:1px solid var(--amber);color:var(--amber);}
+  .status-msg.success{background:rgba(111,207,151,0.1);border:1px solid var(--green);color:var(--green);}
+
+  /* Ledger entry / wax seal card */
+  .entry{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    padding:24px;
+    margin-bottom:16px;
+    overflow:hidden;
+  }
+  .entry::before{
+    content:'';
+    position:absolute;
+    left:0;top:0;bottom:0;
+    width:3px;
+    background:var(--violet-dim);
+  }
+  .entry.status-active::before{background:var(--violet);}
+  .entry.status-disputed::before{background:var(--amber);}
+  .entry.status-resolved::before{background:var(--green);}
+  .entry-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;}
+  .entry-id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--paper-dim);}
+  .seal{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:11px;
+    letter-spacing:0.08em;
+    padding:6px 14px;
+    border-radius:20px;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  .seal.status-active{background:rgba(124,92,255,0.15);color:#B9A8FF;border:1px solid var(--violet);}
+  .seal.status-disputed{background:rgba(232,163,61,0.15);color:var(--amber);border:1px solid var(--amber);}
+  .seal.status-resolved{background:rgba(111,207,151,0.15);color:var(--green);border:1px solid var(--green);}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;margin-bottom:4px;}
+  .kv dt{color:var(--paper-dim);}
+  .kv dd{margin:0;word-break:break-all;}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--hairline);}
+  .actions button{font-size:12.5px;padding:8px 14px;}
+  .muted{color:var(--paper-dim);font-size:13px;}
+  footer{margin-top:64px;text-align:center;}
+  footer p{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--paper-dim);}
+  .tabs{display:flex;gap:8px;margin-bottom:20px;}
+  .tabs button{flex:1;background:var(--surface);}
+  .tabs button.active{background:var(--violet);border-color:var(--violet);color:#0F0F13;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="brand-mark">escrow<span>.ledger</span></div>
+      <div class="brand-sub">sealed until conditions are met — built on Monad</div>
+    </div>
+    <div class="connect-block">
+      <button class="primary" id="connectBtn" onclick="connectWallet()">Connect wallet</button>
+      <span class="net-pill" id="netPill">not connected</span>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <div class="panel">
+    <div class="eyebrow">Setup</div>
+    <h2>Network</h2>
+    <div class="tabs">
+      <button id="tabTestnet" class="active" onclick="selectNetwork(10143)">Testnet (practice)</button>
+      <button id="tabMainnet" onclick="selectNetwork(143)">Mainnet (real funds)</button>
+    </div>
+    <p class="helptext" id="networkHelpText" style="margin-top:0;">You're set to <strong>Monad Testnet</strong>. Funds here are test tokens with no real value. If your wallet is on a different network, we'll prompt you to switch when you connect.</p>
+    <div id="mainnetWarning" style="display:none;background:rgba(232,163,61,0.12);border:1px solid var(--amber);color:var(--amber);border-radius:var(--radius);padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:12px;">
+      ⚠ You're now on Monad Mainnet. Deposits here use real MON and real funds. Double-check every address before confirming.
+    </div>
+    <div id="setupStatus" class="status-msg"></div>
+    <p style="margin-top:16px;">
+      <a href="#" id="advancedToggle" onclick="toggleAdvanced(event)" style="color:var(--paper-dim);font-family:'IBM Plex Mono',monospace;font-size:11px;text-decoration:underline;">advanced: use a different contract address</a>
+    </p>
+    <div id="advancedPanel" style="display:none;margin-top:12px;">
+      <div class="field">
+        <label>Escrow contract address</label>
+        <input id="contractAddress" value="0x06c8D5BB2C82d8282D8D01b334d5dA927782a146">
+      </div>
+      <div class="field">
+        <label>Network</label>
+        <select id="networkSelect" onchange="selectNetwork(Number(this.value))">
+          <option value="10143">Monad Testnet (chain ID 10143)</option>
+          <option value="143">Monad Mainnet (chain ID 143)</option>
+        </select>
+      </div>
+      <button onclick="switchNetwork()">Switch wallet to this network</button>
+    </div>
+  </div>
+
+  <hr class="rule">
+
+  <div class="eyebrow">New entry</div>
+  <h2>Create an escrow</h2>
+  <div class="panel">
+    <div class="field">
+      <label>Seller address</label>
+      <input id="sellerInput" placeholder="0x...">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Asset</label>
+        <select id="tokenType">
+          <option value="native">Native MON</option>
+          <option value="erc20">ERC-20 token</option>
+        </select>
+      </div>
+      <div class="field" id="tokenAddressField" style="display:none;">
+        <label>Token contract address</label>
+        <input id="tokenAddress" placeholder="0x...">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Amount</label>
+        <input id="amountInput" placeholder="e.g. 25.0" type="number" step="any">
+      </div>
+      <div class="field">
+        <label>Auto-release date & time</label>
+        <input id="releaseInput" type="datetime-local">
+      </div>
+    </div>
+    <div class="helptext">Funds are locked now. If nobody disputes, the seller can be paid automatically once this time passes.</div>
+    <button class="primary" onclick="createEscrow()" style="margin-top:8px;">Deposit & create escrow</button>
+    <div id="createStatus" class="status-msg"></div>
+  </div>
+
+  <hr class="rule">
+
+  <div class="eyebrow">Your entries</div>
+  <h2>My escrows</h2>
+  <div class="panel">
+    <button onclick="loadMyEscrows()">Find escrows linked to my wallet</button>
+    <div id="myEscrowsStatus" class="status-msg"></div>
+    <div id="myEscrowsList" style="margin-top:16px;"></div>
+  </div>
+
+  <hr class="rule">
+
+  <div class="eyebrow">Lookup</div>
+  <h2>View an escrow by ID</h2>
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label>Escrow ID</label>
+        <input id="lookupId" placeholder="0" type="number" min="0">
+      </div>
+    </div>
+    <button onclick="loadEscrow()">Load entry</button>
+    <div id="lookupStatus" class="status-msg"></div>
+  </div>
+
+  <div id="entryContainer"></div>
+
+  <footer>
+    <p>MVP template — get a security review before holding real client funds on mainnet.</p>
+  </footer>
+</div>
+
+<script>
+const ABI = [
+  "function createEscrow(address seller, address token, uint256 amount, uint256 releaseTime) external payable returns (uint256)",
+  "function release(uint256 id) external",
+  "function raiseDispute(uint256 id) external",
+  "function proposeSplit(uint256 id, uint16 buyerBps) external",
+  "function acceptSplit(uint256 id) external",
+  "function getEscrow(uint256 id) external view returns (tuple(address buyer, address seller, address token, uint256 amount, uint256 releaseTime, uint8 status, uint16 proposedBuyerBps, address proposer))",
+  "function escrowCount() external view returns (uint256)"
+];
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)"
+];
+const STATUS_LABELS = ["Active", "Disputed", "Resolved"];
+const NETWORKS = {
+  10143: { name:"Monad Testnet", rpc:"https://monad-testnet.drpc.org", currency:"MON", explorer:"https://testnet.monadexplorer.com" },
+  143:   { name:"Monad Mainnet", rpc:"https://rpc.monad.xyz", currency:"MON", explorer:"https://monadexplorer.com" }
+};
+
+const CONTRACTS = {
+  10143: "0x06c8D5BB2C82d8282D8D01b334d5dA927782a146", // Monad Testnet
+  143:   "0x06c8D5BB2C82d8282D8D01b334d5dA927782a146"  // Monad Mainnet
+};
+let currentChainId = 10143;
+
+let provider, signer, userAddress;
+
+document.getElementById('tokenType').addEventListener('change', (e) => {
+  document.getElementById('tokenAddressField').style.display = e.target.value === 'erc20' ? 'block' : 'none';
+});
+
+function toggleAdvanced(evt){
+  evt.preventDefault();
+  const panel = document.getElementById('advancedPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function selectNetwork(chainId){
+  currentChainId = chainId;
+  document.getElementById('tabTestnet').classList.toggle('active', chainId === 10143);
+  document.getElementById('tabMainnet').classList.toggle('active', chainId === 143);
+  document.getElementById('networkSelect').value = String(chainId);
+  document.getElementById('contractAddress').value = CONTRACTS[chainId];
+  document.getElementById('mainnetWarning').style.display = chainId === 143 ? 'block' : 'none';
+  document.getElementById('networkHelpText').innerHTML = chainId === 143
+    ? `You're set to <strong>Monad Mainnet</strong>. Deposits here use real MON.`
+    : `You're set to <strong>Monad Testnet</strong>. Funds here are test tokens with no real value.`;
+
+  if(signer){
+    const network = await provider.getNetwork();
+    if(Number(network.chainId) !== chainId){
+      await switchNetwork();
+    }
+  }
+}
+
+function setStatus(elId, msg, type='info'){
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.className = `status-msg show ${type}`;
+}
+
+async function connectWallet(){
+  if(!window.ethereum){
+    setStatus('setupStatus', 'No wallet found. Install MetaMask first.', 'error');
+    return;
+  }
+  try{
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    userAddress = await signer.getAddress();
+    document.getElementById('connectBtn').textContent = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+    const network = await provider.getNetwork();
+    if(Number(network.chainId) !== currentChainId){
+      setStatus('setupStatus', `Switching your wallet to ${NETWORKS[currentChainId].name}...`, 'info');
+      await switchNetwork();
+    } else {
+      await checkNetwork();
+    }
+  }catch(err){
+    setStatus('setupStatus', 'Connection failed: ' + err.message, 'error');
+  }
+}
+
+async function checkNetwork(){
+  if(!provider) return;
+  const network = await provider.getNetwork();
+  const chainId = Number(network.chainId);
+  const pill = document.getElementById('netPill');
+  if(NETWORKS[chainId]){
+    pill.textContent = NETWORKS[chainId].name;
+    pill.className = 'net-pill ok';
+  } else {
+    pill.textContent = 'wrong network (chain ' + chainId + ')';
+    pill.className = 'net-pill bad';
+  }
+}
+
+async function switchNetwork(){
+  const chainId = Number(document.getElementById('networkSelect').value);
+  const net = NETWORKS[chainId];
+  const hexId = '0x' + chainId.toString(16);
+  try{
+    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexId }] });
+  }catch(switchError){
+    if(switchError.code === 4902){
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: hexId,
+          chainName: net.name,
+          nativeCurrency: { name: net.currency, symbol: net.currency, decimals: 18 },
+          rpcUrls: [net.rpc],
+          blockExplorerUrls: [net.explorer]
+        }]
+      });
+    } else {
+      setStatus('setupStatus', 'Network switch failed: ' + switchError.message, 'error');
+      return;
+    }
+  }
+  await checkNetwork();
+  setStatus('setupStatus', 'Connected to ' + net.name, 'success');
+}
+
+function getContract(withSigner=true){
+  const address = document.getElementById('contractAddress').value.trim();
+  if(!address) throw new Error('Paste the contract address first.');
+  return new ethers.Contract(address, ABI, withSigner ? signer : provider);
+}
+
+async function createEscrow(){
+  try{
+    if(!signer) return setStatus('createStatus', 'Connect your wallet first.', 'error');
+    const seller = document.getElementById('sellerInput').value.trim();
+    const tokenType = document.getElementById('tokenType').value;
+    const tokenAddress = tokenType === 'erc20' ? document.getElementById('tokenAddress').value.trim() : ethers.ZeroAddress;
+    const amountRaw = document.getElementById('amountInput').value;
+    const releaseLocal = document.getElementById('releaseInput').value;
+    if(!seller || !amountRaw || !releaseLocal) return setStatus('createStatus', 'Fill in seller, amount, and release time.', 'error');
+
+    const releaseTimestamp = Math.floor(new Date(releaseLocal).getTime() / 1000);
+    const contract = getContract();
+
+    let amountWei;
+    if(tokenType === 'native'){
+      amountWei = ethers.parseEther(amountRaw);
+      setStatus('createStatus', 'Confirm the deposit in your wallet...', 'info');
+      const tx = await contract.createEscrow(seller, tokenAddress, amountWei, releaseTimestamp, { value: amountWei });
+      setStatus('createStatus', 'Waiting for confirmation... tx: ' + tx.hash, 'info');
+      await tx.wait();
+    } else {
+      const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      const decimals = await token.decimals();
+      amountWei = ethers.parseUnits(amountRaw, decimals);
+      setStatus('createStatus', 'Step 1/2: approving token spend...', 'info');
+      const approveTx = await token.approve(document.getElementById('contractAddress').value.trim(), amountWei);
+      await approveTx.wait();
+      setStatus('createStatus', 'Step 2/2: creating escrow...', 'info');
+      const tx = await contract.createEscrow(seller, tokenAddress, amountWei, releaseTimestamp);
+      await tx.wait();
+    }
+    setStatus('createStatus', 'Escrow created. Use the lookup below to view it (check escrowCount - 1 for the newest ID).', 'success');
+  }catch(err){
+    setStatus('createStatus', 'Failed: ' + (err.reason || err.message), 'error');
+  }
+}
+
+async function loadEscrow(){
+  try{
+    const id = document.getElementById('lookupId').value;
+    if(id === '') return setStatus('lookupStatus', 'Enter an escrow ID.', 'error');
+    const contract = getContract(false);
+    const e = await contract.getEscrow(id);
+    document.getElementById('lookupStatus').className = 'status-msg';
+    const container = document.getElementById('entryContainer');
+    container.innerHTML = '';
+    await renderEntry(id, e, container);
+  }catch(err){
+    setStatus('lookupStatus', 'Could not load escrow: ' + (err.reason || err.message), 'error');
+  }
+}
+
+async function loadMyEscrows(){
+  try{
+    if(!signer) return setStatus('myEscrowsStatus', 'Connect your wallet first.', 'error');
+    setStatus('myEscrowsStatus', 'Scanning...', 'info');
+    const contract = getContract(false);
+    const count = Number(await contract.escrowCount());
+    const listEl = document.getElementById('myEscrowsList');
+    listEl.innerHTML = '';
+    let found = 0;
+    for(let id = count - 1; id >= 0; id--){
+      const e = await contract.getEscrow(id);
+      if(e.buyer.toLowerCase() === userAddress.toLowerCase() || e.seller.toLowerCase() === userAddress.toLowerCase()){
+        found++;
+        await renderEntry(id, e, listEl);
+      }
+    }
+    if(found === 0){
+      setStatus('myEscrowsStatus', 'No escrows found for this wallet yet.', 'info');
+    } else {
+      setStatus('myEscrowsStatus', `Found ${found} escrow${found>1?'s':''}.`, 'success');
+    }
+  }catch(err){
+    setStatus('myEscrowsStatus', 'Scan failed: ' + (err.reason || err.message), 'error');
+  }
+}
+
+function statusClass(statusNum){
+  return ['status-active','status-disputed','status-resolved'][statusNum] || 'status-active';
+}
+
+async function renderEntry(id, e, targetContainer){
+  const isNative = e.token === ethers.ZeroAddress;
+  const amountDisplay = isNative ? ethers.formatEther(e.amount) + ' MON' : e.amount.toString() + ' (token units — check decimals)';
+  const releaseDate = new Date(Number(e.releaseTime) * 1000).toLocaleString();
+  const statusNum = Number(e.status);
+  const statusLabel = STATUS_LABELS[statusNum];
+  const now = Math.floor(Date.now()/1000);
+  const canRelease = statusNum === 0 && now >= Number(e.releaseTime);
+  const canDispute = statusNum === 0 && now < Number(e.releaseTime);
+  const canPropose = statusNum === 1;
+  const canAccept = statusNum === 1 && e.proposer !== ethers.ZeroAddress;
+
+  const el = document.createElement('div');
+  el.className = 'entry ' + statusClass(statusNum);
+  el.innerHTML = `
+    <div class="entry-top">
+      <div>
+        <div class="entry-id">ENTRY #${id}</div>
+      </div>
+      <div class="seal ${statusClass(statusNum)}">${statusLabel}</div>
+    </div>
+    <dl class="kv">
+      <dt>Buyer</dt><dd>${e.buyer}</dd>
+      <dt>Seller</dt><dd>${e.seller}</dd>
+      <dt>Amount</dt><dd>${amountDisplay}</dd>
+      <dt>Releases</dt><dd>${releaseDate}</dd>
+      ${statusNum === 1 && e.proposer !== ethers.ZeroAddress ? `<dt>Proposal</dt><dd>${e.proposer.slice(0,8)}... proposed ${Number(e.proposedBuyerBps)/100}% to buyer</dd>` : ''}
+    </dl>
+    <div class="actions" id="actions-${id}"></div>
+  `;
+
+  const actions = el.querySelector(`#actions-${id}`);
+  const inMyEscrows = targetContainer.id === 'myEscrowsList';
+  const statusElId = inMyEscrows ? 'myEscrowsStatus' : 'lookupStatus';
+  const refreshFn = inMyEscrows ? loadMyEscrows : loadEscrow;
+
+  if(canRelease){
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = 'Release to seller';
+    btn.onclick = () => runAction(id, 'release', null, statusElId, refreshFn);
+    actions.appendChild(btn);
+  }
+  if(canDispute){
+    const btn = document.createElement('button');
+    btn.textContent = 'Raise dispute';
+    btn.onclick = () => runAction(id, 'raiseDispute', null, statusElId, refreshFn);
+    actions.appendChild(btn);
+  }
+  if(canPropose){
+    const wrap = document.createElement('div');
+    wrap.style.width = '100%';
+    wrap.innerHTML = `
+      <div class="field" style="margin-top:12px;">
+        <label>Propose split — % to buyer</label>
+        <input type="number" min="0" max="100" id="split-${id}" placeholder="e.g. 50">
+      </div>`;
+    actions.appendChild(wrap);
+    const btn = document.createElement('button');
+    btn.textContent = 'Propose split';
+    btn.onclick = () => runAction(id, 'proposeSplit', document.getElementById(`split-${id}`).value, statusElId, refreshFn);
+    actions.appendChild(btn);
+  }
+  if(canAccept){
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = 'Accept pending split';
+    btn.onclick = () => runAction(id, 'acceptSplit', null, statusElId, refreshFn);
+    actions.appendChild(btn);
+  }
+  if(statusNum === 2){
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'This escrow is resolved. Funds have been paid out.';
+    actions.appendChild(p);
+  }
+
+  targetContainer.appendChild(el);
+}
+
+async function runAction(id, method, arg, statusElId, refreshFn){
+  statusElId = statusElId || 'lookupStatus';
+  refreshFn = refreshFn || loadEscrow;
+  try{
+    if(!signer) return setStatus(statusElId, 'Connect your wallet first.', 'error');
+    const contract = getContract();
+    setStatus(statusElId, 'Confirm in your wallet...', 'info');
+    let tx;
+    if(method === 'proposeSplit'){
+      const bps = Math.round(Number(arg) * 100);
+      tx = await contract.proposeSplit(id, bps);
+    } else {
+      tx = await contract[method](id);
+    }
+    setStatus(statusElId, 'Waiting for confirmation... tx: ' + tx.hash, 'info');
+    await tx.wait();
+    setStatus(statusElId, 'Done.', 'success');
+    await refreshFn();
+  }catch(err){
+    setStatus(statusElId, 'Failed: ' + (err.reason || err.message), 'error');
+  }
+}
+
+if(window.ethereum){
+  window.ethereum.on('chainChanged', () => window.location.reload());
+  window.ethereum.on('accountsChanged', () => window.location.reload());
+}
+</script>
+</body>
+</html>
